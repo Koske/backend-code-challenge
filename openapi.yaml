@@ -1,0 +1,102 @@
+openapi: 3.0.0
+info:
+  title: Messages API
+  version: 1.0.0
+  description: API for managing messages including sending and retrieving them.
+
+servers:
+  - url: http://localhost:8000
+
+paths:
+  /messages:
+    get:
+      summary: Retrieve Messages
+      description: Retrieves a list of messages, optionally filtered by status.
+      parameters:
+        - name: status
+          in: query
+          description: Filter messages by their status.
+          required: false
+          schema:
+            type: string
+            enum:
+              - "sent"
+              - "read"
+      responses:
+        '200':
+          description: A list of messages.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        uuid:
+                          type: string
+                          format: uuid
+                          description: Unique identifier of the message.
+                        text:
+                          type: string
+                          description: The content of the message.
+                        status:
+                          type: string
+                          enum:
+                            - "sent"
+                            - "read"
+                          description: Current status of the message.
+              example:
+                messages:
+                  - uuid: "550e8400-e29b-41d4-a716-446655440000"
+                    text: "Hello, World!"
+                    status: "read"
+                  - uuid: "550e8400-e29b-41d4-a716-446655440001"
+                    text: "How are you today?"
+                    status: "sent"
+                  - uuid: "550e8400-e29b-41d4-a716-446655440002"
+                    text: "Thanks, I'm fine. How about you?"
+                    status: "sent"
+    post:
+      summary: Send a Message
+      description: Sends a new message with the provided text.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  description: The text of the message to be sent.
+                  example: "Hello, this is a test message."
+      responses:
+        '200':
+          description: Message successfully sent.
+        '400':
+          description: Bad request, missing or invalid parameters.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Description of the error.
+              example:
+                error: "Text parameter is required."
+        '500':
+          description: Internal Server Error, unexpected server issues.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Description of the error.
+              example:
+                error: "Failed to send message due to an internal server error."

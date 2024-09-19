@@ -1,0 +1,7 @@
+framework:
+    serializer:
+        enabled: true
+        enable_attributes: true
+        default_context:
+            groups: ['Default']
+            enable_max_depth: true
