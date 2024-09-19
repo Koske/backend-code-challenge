@@ -69,7 +69,6 @@ class MessageController extends AbstractController
 	 * @param MessageBusInterface $messageBus
 	 * @return Response
 	 */
-
 	#[Route('/messages', name: 'send_message', methods: ['POST'])]
 	public function sendMessage(Request $request, MessageBusInterface $messageBus): Response
 	{
