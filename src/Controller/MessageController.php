@@ -1,93 +1,84 @@
 <?php
-declare(strict_types=1);
+	declare(strict_types=1);
 
-namespace App\Controller;
+	namespace App\Controller;
 
-use App\Constants\ErrorMessages;
-use App\Enum\MessageStatus;
-use App\Message\SendMessage;
-use App\Repository\MessageRepository;
-use Psr\Log\LoggerInterface;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Messenger\MessageBusInterface;
-use Symfony\Component\Routing\Annotation\Route;
-use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\Serializer\SerializerInterface;
-
-/**
- * MessageController handles requests related to messages.
- */
-class MessageController extends AbstractController
-{
-	private LoggerInterface $logger;
-	private SerializerInterface $serializer;
-
-	public function __construct(LoggerInterface $logger, SerializerInterface $serializer)
-	{
-		$this->logger = $logger;
-		$this->serializer = $serializer;
-	}
+	use App\Constants\ErrorMessages;
+	use App\Service\MessageService;
+	use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+	use Symfony\Component\HttpFoundation\Request;
+	use Symfony\Component\HttpFoundation\Response;
+	use Symfony\Component\Routing\Annotation\Route;
+	use Symfony\Component\HttpFoundation\JsonResponse;
+	use Symfony\Component\Serializer\SerializerInterface;
 
 	/**
-	 * List all messages based on request parameters.
-	 *
-	 *
-	 * @param Request $request
-	 * @param MessageRepository $messageRepository
-	 * @return JsonResponse
+	 * MessageController handles requests related to messages.
 	 */
-	#[Route('/messages', name: 'get_messages', methods: ['GET'])]
-	public function getMessages(Request $request, MessageRepository $messageRepository): JsonResponse
+	class MessageController extends AbstractController
 	{
-		$status = $request->query->get('status');
+		private SerializerInterface $serializer;
+		private MessageService $messageService;
 
-		if (is_string($status)) {
-			$messageStatus = MessageStatus::tryFrom($status);
+		public function __construct(SerializerInterface $serializer, MessageService $messageService)
+		{
+			$this->serializer = $serializer;
+			$this->messageService = $messageService;
 		}
 
-		$messages = $messageRepository->getMessages($messageStatus ?? null);
+		/**
+		 * List all messages based on request parameters.
+		 *
+		 * @param Request $request
+		 * @return JsonResponse
+		 */
+		#[Route('/messages', name: 'get_messages', methods: ['GET'])]
+		public function getMessages(Request $request): JsonResponse
+		{
+			$status = $request->query->get('status');
 
-		$formattedMessages = $this->serializer->serialize($messages, 'json', ['groups' => 'message:read']);
-		$formattedMessagesArray = json_decode($formattedMessages, true);
-		if (!is_array($formattedMessagesArray)) {
-			$formattedMessagesArray = [];
+			// Ensure that $status is either a string or null.
+			if (!is_string($status) && !is_null($status)) {
+				return $this->json([
+					'error' => 'Invalid status type, must be a string or null.'
+				], Response::HTTP_BAD_REQUEST);
+			}
+
+			$messages = $this->messageService->getMessages($status);
+			$formattedMessages = $this->serializer->serialize($messages, 'json', ['groups' => 'message:read']);
+			$formattedMessagesArray = json_decode($formattedMessages, true);
+			if (!is_array($formattedMessagesArray)) {
+				$formattedMessagesArray = [];
+			}
+
+			return $this->json([
+				'messages' => $formattedMessagesArray,
+			]);
 		}
 
-		return $this->json([
-			'messages' => $formattedMessagesArray,
-		]);
+		/**
+		 * Dispatch a new message to the message bus.
+		 *
+		 * @param Request $request
+		 * @return Response
+		 */
+		#[Route('/messages', name: 'send_message', methods: ['POST'])]
+		public function sendMessage(Request $request): Response
+		{
+			$data = json_decode($request->getContent(), true);
+
+			// Ensure that $data is an array before accessing 'text'
+			if (!is_array($data) || !isset($data['text']) || !is_string($data['text'])) {
+				return new Response(ErrorMessages::TEXT_REQUIRED, Response::HTTP_BAD_REQUEST);
+			}
+
+			$isSent = $this->messageService->sendMessage($data['text']);
+
+			if (!$isSent) {
+				return new Response(ErrorMessages::FAILED_TO_SEND_MESSAGE, Response::HTTP_INTERNAL_SERVER_ERROR);
+			}
+
+			return new Response(ErrorMessages::MESSAGE_SUCCESSFULLY_SENT, Response::HTTP_OK);
+		}
+
 	}
-
-
-	/**
-	 * Dispatch a new message to the message bus.
-	 *
-	 *
-	 * @param Request $request
-	 * @param MessageBusInterface $messageBus
-	 * @return Response
-	 */
-	#[Route('/messages', name: 'send_message', methods: ['POST'])]
-	public function sendMessage(Request $request, MessageBusInterface $messageBus): Response
-	{
-		$data = json_decode($request->getContent(), true);
-
-		if (is_array($data) && isset($data['text'])) {
-			$text = $data['text'];
-		} else {
-			return new Response(ErrorMessages::TEXT_REQUIRED, Response::HTTP_BAD_REQUEST);
-		}
-
-		try {
-			$messageBus->dispatch(new SendMessage($text));
-		} catch (\Throwable $e) {
-			$this->logger->error(ErrorMessages::FAILED_TO_SEND_MESSAGE . ":".$e->getMessage());
-
-			return new Response(ErrorMessages::FAILED_TO_SEND_MESSAGE, Response::HTTP_INTERNAL_SERVER_ERROR);
-		}
-
-		return new Response(ErrorMessages::MESSAGE_SUCCESSFULLY_SENT, Response::HTTP_OK);
-	}
-}
